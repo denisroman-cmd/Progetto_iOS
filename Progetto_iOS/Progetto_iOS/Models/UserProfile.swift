@@ -8,7 +8,8 @@ struct UserProfile: Codable {
     var height: Double = 170.0
     var goal: String = "Dimagrire"
     var email: String = ""
-    var password: String = ""      
+    var password: String = ""
+    var isDarkMode: Bool = false
 
     private enum CodingKeys: String, CodingKey {
         case name, isMale, age, weight, height, goal, email
