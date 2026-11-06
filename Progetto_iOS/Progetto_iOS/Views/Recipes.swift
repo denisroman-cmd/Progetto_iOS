@@ -1,18 +1,23 @@
 import SwiftUI
 
 struct Recipes: View {
-    @State private var recipes: [MealDBRecipe] = []
-    @State private var searchQuery: String = "Chicken"
+    @EnvironmentObject private var diary: DiaryStore
+
+    @State private var recipes: [Recipe] = []
+    @State private var searchQuery: String = "Pollo"
     @State private var isLoading = false
-    @State private var selectedRecipeForDetails: MealDBRecipe?
-    
+    @State private var errorMessage: String?
+    @State private var selectedRecipeForDetails: Recipe?
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
                 HStack {
-                    TextField("Cerca ricetta (es. Pasta, Rice...)", text: $searchQuery)
+                    TextField("Cerca ricetta (es. Pasta, Riso...)", text: $searchQuery)
                         .textFieldStyle(.roundedBorder)
-                    
+                        .submitLabel(.search)
+                        .onSubmit { fetchRecipes() }
+
                     Button("Cerca") {
                         fetchRecipes()
                     }
@@ -20,15 +25,17 @@ struct Recipes: View {
                 }
                 .padding(.horizontal)
                 .padding(.top)
-                
+
                 if isLoading {
                     Spacer()
-                    ProgressView("Caricamento da TheMealDB...")
+                    ProgressView("Caricamento ricette...")
                     Spacer()
                 } else if recipes.isEmpty {
                     Spacer()
-                    Text("Nessuna ricetta trovata.")
-                        .foregroundColor(.gray)
+                    Text(errorMessage ?? "Nessuna ricetta trovata.")
+                        .foregroundColor(errorMessage == nil ? .gray : .red)
+                        .multilineTextAlignment(.center)
+                        .padding()
                     Spacer()
                 } else {
                     List(recipes) { recipe in
@@ -36,25 +43,25 @@ struct Recipes: View {
                             selectedRecipeForDetails = recipe
                         } label: {
                             HStack(spacing: 12) {
-                                AsyncImage(url: URL(string: recipe.strMealThumb)) { image in
-                                    image.resizable().scaledToFill()
-                                } placeholder: {
-                                    Color.gray.opacity(0.3)
-                                }
-                                .frame(width: 70, height: 70)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                
+                                Image(systemName: "fork.knife")
+                                    .font(.title2)
+                                    .foregroundColor(.green)
+                                    .frame(width: 50, height: 50)
+                                    .background(Color.green.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(recipe.strMeal)
+                                    Text(recipe.title)
                                         .font(.headline)
                                         .foregroundColor(.primary)
-                                    
-                                    Text("~ \(recipe.estimatedCalories) kcal")
+                                        .lineLimit(2)
+
+                                    Text("\(recipe.caloriesPerServing) kcal / porzione")
                                         .font(.subheadline)
                                         .bold()
                                         .foregroundColor(.green)
-                                    
-                                    Text("P: \(recipe.estimatedProtein)g | C: \(recipe.estimatedCarbs)g | G: \(recipe.estimatedFat)g")
+
+                                    Text("P: \(recipe.proteinPerServing)g | C: \(recipe.carbsPerServing)g | G: \(recipe.fatPerServing)g")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -71,90 +78,154 @@ struct Recipes: View {
             .navigationTitle("Ricette Online")
             .sheet(item: $selectedRecipeForDetails) { recipe in
                 RecipeDetailSheet(recipe: recipe)
+                    .environmentObject(diary)
             }
             .onAppear {
                 if recipes.isEmpty { fetchRecipes() }
             }
         }
     }
-    
+
     private func fetchRecipes() {
         isLoading = true
+        errorMessage = nil
         Task {
-            recipes = await MealDBService.shared.searchRecipes(query: searchQuery)
+            recipes = await RecipeService.shared.searchRecipes(query: searchQuery)
+            errorMessage = RecipeService.shared.lastError
             isLoading = false
         }
     }
 }
 
 struct RecipeDetailSheet: View {
-    let recipe: MealDBRecipe
+    let recipe: Recipe
+
+    @EnvironmentObject private var diary: DiaryStore
     @Environment(\.dismiss) private var dismiss
-    
+
+    @State private var meal: MealType = .lunch
+    @State private var portions: Double = 1
+
+    private var date: Date { diary.selectedDate }
+    private var alreadyAdded: Bool { diary.hasRecipe(recipe.title, date: date, meal: meal) }
+
+    private var totalForPortions: Int {
+        let servings = Double(max(recipe.servings, 1))
+        return Int((recipe.totalCalories / servings * portions).rounded())
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    AsyncImage(url: URL(string: recipe.strMealThumb)) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.gray.opacity(0.3)
-                    }
-                    .frame(height: 200)
-                    .clipped()
-                    .cornerRadius(12)
-                    
+                    Text("Valori per porzione (\(recipe.servings) porzioni totali)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
                     HStack(spacing: 12) {
-                        MacroBadge(title: "Calorie", value: "\(recipe.estimatedCalories) kcal", color: .green)
-                        MacroBadge(title: "Proteine", value: "\(recipe.estimatedProtein)g", color: .blue)
-                        MacroBadge(title: "Carbo", value: "\(recipe.estimatedCarbs)g", color: .orange)
-                        MacroBadge(title: "Grassi", value: "\(recipe.estimatedFat)g", color: .red)
+                        MacroBadge(title: "Calorie", value: "\(recipe.caloriesPerServing) kcal", color: .green)
+                        MacroBadge(title: "Proteine", value: "\(recipe.proteinPerServing)g", color: .blue)
+                        MacroBadge(title: "Carbo", value: "\(recipe.carbsPerServing)g", color: .orange)
+                        MacroBadge(title: "Grassi", value: "\(recipe.fatPerServing)g", color: .red)
                     }
-                    
-                    Text("Ingredienti:")
-                        .font(.headline)
-                    
-                    ForEach(recipe.ingredientsList, id: \.self) { ingredient in
-                        Text("• \(ingredient)")
-                            .font(.subheadline)
+
+                    addToDiaryCard
+
+                    if !recipe.ingredients.isEmpty {
+                        Text("Ingredienti:")
+                            .font(.headline)
+
+                        ForEach(recipe.ingredients, id: \.self) { ingredient in
+                            Text("• \(ingredient)")
+                                .font(.subheadline)
+                        }
                     }
-                    
-                    if let instructions = recipe.strInstructions, !instructions.isEmpty {
+
+                    if !recipe.instructions.isEmpty {
                         Text("Istruzioni:")
                             .font(.headline)
                             .padding(.top, 8)
-                        
-                        Text(instructions)
-                            .font(.body)
-                            .foregroundColor(.secondary)
+
+                        ForEach(Array(recipe.instructions.enumerated()), id: \.offset) { index, step in
+                            Text("\(index + 1). \(step)")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .padding()
             }
-            .navigationTitle(recipe.strMeal)
+            .navigationTitle(recipe.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Chiudi") { dismiss() }
                 }
             }
+            .onAppear {
+                meal = diary.preferredMeal ?? MealType.suggested(for: Date())
+            }
         }
     }
-}
 
-struct MacroBadge: View {
-    let title: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        VStack {
-            Text(title).font(.caption2).foregroundColor(.gray)
-            Text(value).font(.caption).bold().foregroundColor(color)
+    // MARK: - Aggiungi / rimuovi dal diario
+
+    private var addToDiaryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Aggiungi al diario")
+                .font(.headline)
+
+            Text(date.italianLongDay)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            Picker("Pasto", selection: $meal) {
+                ForEach(MealType.allCases) { m in
+                    Text(m.rawValue).tag(m)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Stepper(value: $portions, in: 0.5...10, step: 0.5) {
+                Text("Porzioni: \(String(format: "%g", portions)) (\(totalForPortions) kcal)")
+                    .font(.subheadline)
+            }
+            .disabled(alreadyAdded)
+
+            if alreadyAdded {
+                Label("Già nel diario (\(meal.rawValue.lowercased()))", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline)
+                    .foregroundColor(.green)
+
+                Button(role: .destructive) {
+                    diary.removeRecipe(recipe.title, date: date, meal: meal)
+                } label: {
+                    Label("Rimuovi dal diario", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    diary.selectedTab = 0
+                    dismiss()
+                } label: {
+                    Label("Vai al piano", systemImage: "calendar")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button {
+                    diary.addRecipe(recipe, portions: portions, date: date, meal: meal)
+                    diary.preferredMeal = nil
+                } label: {
+                    Label("Aggiungi al diario", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding()
         .background(Color(.secondarySystemBackground))
-        .cornerRadius(8)
+        .cornerRadius(12)
     }
 }

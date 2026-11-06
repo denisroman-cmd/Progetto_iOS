@@ -21,6 +21,9 @@ struct Login: View {
     @State private var currentStep = 1
     @State private var errorMessage = ""
     
+    @State private var loginEmail = ""
+    @State private var loginPassword = ""
+    
     var body: some View {
         VStack(spacing: 20) {
             switch currentStep {
@@ -42,8 +45,14 @@ struct Login: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
                 
+                Button("Hai già un account? Accedi") {
+                    errorMessage = ""
+                    currentStep = 6
+                }
+                
             case 2:
-                Text("\(profile.name), \(profile.isMale ? "pronto" : "pronta") per iniziare il tuo percorso al meglio?")
+                let suffix = profile.isMale ? "o" : "a"
+                Text("\(profile.name), pronto/\(suffix) per iniziare il tuo percorso al meglio?")
                     .font(.title2)
                     .bold()
                     .multilineTextAlignment(.center)
@@ -120,7 +129,9 @@ struct Login: View {
                         }
                         
                         Button("Registrati") {
-                            if PasswordValidator.isValid(profile.password) && !profile.email.isEmpty {
+                            if UserProfile.exists(email: profile.email) {
+                                errorMessage = "Esiste già un account con questa email."
+                            } else if PasswordValidator.isValid(profile.password) && !profile.email.isEmpty {
                                 isRegistered = true
                             } else {
                                 errorMessage = "Password non valida! Controlla i requisiti."
@@ -128,11 +139,40 @@ struct Login: View {
                         }
                     }
                 }
-                
+            case 6:
+                Form {
+                    Section(header: Text("Accedi")) {
+                        TextField("Email", text: $loginEmail)
+                            .autocapitalization(.none)
+                            .keyboardType(.emailAddress)
+                        SecureField("Password", text: $loginPassword)
+                    }
+                    Section {
+                        if !errorMessage.isEmpty {
+                            Text(errorMessage)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                        }
+                        Button("Accedi") { tryLogin() }
+                        Button("Indietro") {
+                            errorMessage = ""
+                            currentStep = 1
+                        }
+                    }
+                }
             default:
                 EmptyView()
             }
         }
         .padding()
+    }
+    private func tryLogin() {
+        if let saved = UserProfile.checkLogin(email: loginEmail, password: loginPassword) {
+            profile = saved
+            profile.password = loginPassword
+            isRegistered = true
+        } else {
+            errorMessage = "Email o password errata."
+        }
     }
 }
