@@ -1,9 +1,4 @@
-//
-//  OpenFoodFactsService.swift
-//  Progetto_iOS
-//
-//  Created by s11 on 06/11/26.
-//
+
 import Foundation
 
 enum OpenFoodFactsError: LocalizedError {
