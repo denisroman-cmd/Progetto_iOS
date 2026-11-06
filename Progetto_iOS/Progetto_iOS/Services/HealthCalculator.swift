@@ -1,15 +1,5 @@
 import Foundation
 
-enum MealType: String, CaseIterable, Identifiable {
-    case breakfast = "Colazione"
-    case morningSnack = "Merenda Mattutina"
-    case lunch = "Pranzo"
-    case afternoonSnack = "Merenda Pomeridiana"
-    case dinner = "Cena"
-    
-    var id: String { rawValue }
-}
-
 struct HealthCalculator {
     static func calculateDailyCalories(profile: UserProfile) -> Int {
         var bmr = (10.0 * profile.weight) + (6.25 * profile.height) - (5.0 * Double(profile.age))
@@ -22,15 +12,14 @@ struct HealthCalculator {
         }
         return Int(tdee)
     }
-    
+
     static func caloriesForMeal(_ meal: MealType, totalCalories: Int) -> Int {
         let total = Double(totalCalories)
         switch meal {
         case .breakfast: return Int(total * 0.20)
-        case .morningSnack: return Int(total * 0.10)
-        case .lunch: return Int(total * 0.35)
-        case .afternoonSnack: return Int(total * 0.10)
-        case .dinner: return Int(total * 0.25)
+        case .lunch:     return Int(total * 0.35)
+        case .snack:     return Int(total * 0.20)
+        case .dinner:    return Int(total * 0.25)
         }
     }
 }
