@@ -43,8 +43,7 @@ struct Login: View {
                 .disabled(profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
                 
             case 2:
-                let suffix = profile.isMale ? "o" : "a"
-                Text("\(profile.name), pronto/\(suffix) per iniziare il tuo percorso al meglio?")
+                Text("\(profile.name), \(profile.isMale ? "pronto" : "pronta") per iniziare il tuo percorso al meglio?")
                     .font(.title2)
                     .bold()
                     .multilineTextAlignment(.center)
