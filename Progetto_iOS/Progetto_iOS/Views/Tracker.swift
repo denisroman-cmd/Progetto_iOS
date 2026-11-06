@@ -16,18 +16,21 @@ struct LoggedFoodItem: Identifiable {
 
 struct Tracker: View {
     @State private var foodName: String = ""
-    @State private var caloriesText: String = ""
-    @State private var proteinText: String = ""
-    @State private var carbsText: String = ""
-    @State private var fatText: String = ""
-    
+    @State private var gramsText: String = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
     @State private var loggedItems: [LoggedFoodItem] = []
-    
+
     var totalCalories: Double { loggedItems.reduce(0) { $0 + $1.nutrition.calories } }
     var totalProtein: Double { loggedItems.reduce(0) { $0 + $1.nutrition.protein } }
     var totalCarbs: Double { loggedItems.reduce(0) { $0 + $1.nutrition.carbs } }
     var totalFat: Double { loggedItems.reduce(0) { $0 + $1.nutrition.fat } }
-    
+
+    private var grams: Double? {
+        Double(gramsText.replacingOccurrences(of: ",", with: "."))
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
@@ -38,43 +41,44 @@ struct Tracker: View {
                     TrackerMacroCard(title: "Grassi", value: "\(Int(totalFat))g", color: .red)
                 }
                 .padding(.horizontal)
-                
+
                 VStack(spacing: 10) {
-                    TextField("Nome Alimento (es. Petto di Pollo)", text: $foodName)
+                    TextField("Alimento (es. Petto di Pollo)", text: $foodName)
                         .textFieldStyle(.roundedBorder)
-                    
-                    HStack(spacing: 8) {
-                        TextField("kcal", text: $caloriesText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Prot (g)", text: $proteinText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Carb (g)", text: $carbsText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Fat (g)", text: $fatText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.roundedBorder)
+
+                    TextField("Quantità in grammi (es. 150)", text: $gramsText)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
                     }
-                    
+
                     Button(action: addFoodItem) {
-                        Label("Aggiungi al Diario", systemImage: "plus.circle.fill")
-                            .frame(maxWidth: .infinity)
+                        if isLoading {
+                            ProgressView().frame(maxWidth: .infinity)
+                        } else {
+                            Label("Calcola e aggiungi", systemImage: "plus.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(foodName.isEmpty || caloriesText.isEmpty)
+                    .disabled(foodName.trimmingCharacters(in: .whitespaces).isEmpty
+                              || (grams ?? 0) <= 0
+                              || isLoading)
                 }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(12)
                 .padding(.horizontal)
-                
+
                 List {
                     ForEach(loggedItems) { item in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name)
+                                Text("\(item.name) · \(item.amount)")
                                     .font(.headline)
                                 Text("P: \(Int(item.nutrition.protein))g | C: \(Int(item.nutrition.carbs))g | G: \(Int(item.nutrition.fat))g")
                                     .font(.caption)
@@ -93,25 +97,28 @@ struct Tracker: View {
             .navigationTitle("Diario Alimentare")
         }
     }
-    
+
     private func addFoodItem() {
-        let cal = Double(caloriesText) ?? 0
-        let p = Double(proteinText) ?? 0
-        let c = Double(carbsText) ?? 0
-        let f = Double(fatText) ?? 0
-        
-        let summary = NutritionSummary(calories: cal, protein: p, carbs: c, fat: f)
-        let newItem = LoggedFoodItem(name: foodName, amount: "", nutrition: summary)
-        
-        loggedItems.append(newItem)
-        
-        foodName = ""
-        caloriesText = ""
-        proteinText = ""
-        carbsText = ""
-        fatText = ""
+        guard let grams, grams > 0 else { return }
+        let name = foodName.trimmingCharacters(in: .whitespaces)
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let nutrition = try await OpenFoodFactsService.shared.fetchNutrition(foodName: name, grams: grams)
+                loggedItems.append(LoggedFoodItem(name: name.capitalized,
+                                                  amount: "\(Int(grams)) g",
+                                                  nutrition: nutrition))
+                foodName = ""
+                gramsText = ""
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isLoading = false
+        }
     }
-    
+
     private func deleteItem(at offsets: IndexSet) {
         loggedItems.remove(atOffsets: offsets)
     }
@@ -121,7 +128,7 @@ struct TrackerMacroCard: View {
     let title: String
     let value: String
     let color: Color
-    
+
     var body: some View {
         VStack {
             Text(title).font(.caption2).foregroundColor(.gray)
