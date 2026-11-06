@@ -51,8 +51,8 @@ struct Login: View {
                 }
                 
             case 2:
-                let suffix = profile.isMale ? "o" : "a"
-                Text("\(profile.name), pronto/\(suffix) per iniziare il tuo percorso al meglio?")
+                let readiness = profile.isMale ? "pronto" : "pronta"
+                Text("\(profile.name), \(readiness) per iniziare il tuo percorso al meglio?")
                     .font(.title2)
                     .bold()
                     .multilineTextAlignment(.center)
@@ -166,6 +166,7 @@ struct Login: View {
         }
         .padding()
     }
+    
     private func tryLogin() {
         if let saved = UserProfile.checkLogin(email: loginEmail, password: loginPassword) {
             profile = saved
